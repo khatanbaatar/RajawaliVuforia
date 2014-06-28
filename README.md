@@ -2,15 +2,16 @@
 
 [https://www.vuforia.com/](Vuforia SDK) is a product of Qualcomm Austria Research Center GmbH.
 
-This project integrates the (Rajawali 3D framework)[https://github.com/MasDennis/Rajawali] and the Vuforia Augmented Reality SDK.
-It is currently using Vuforia 2.0.31.
+This project integrates the [Rajawali 3D framework](https://github.com/MasDennis/Rajawali) and the Vuforia Augmented Reality SDK.
+It is currently using Vuforia 2.8.8.
 
 Features:
 * Frame Markers
-* Image Targets
 * Cloud Recognition Targets
+* Image Targets
 * Cylinder Targets
 * Multi-Targets
+* Virtual Buttons
 
 [http://www.youtube.com/watch?v=rjLa4K9Ffuo](http://www.youtube.com/watch?v=rjLa4K9Ffuo)
 
