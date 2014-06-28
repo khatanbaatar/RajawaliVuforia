@@ -1,35 +1,4 @@
-#include <jni.h>
-#include <android/log.h>
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-#include <math.h>
-
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
-
-#include <QCAR/QCAR.h>
-#include <QCAR/CameraDevice.h>
-#include <QCAR/Renderer.h>
-#include <QCAR/VideoBackgroundConfig.h>
-#include <QCAR/Trackable.h>
-#include <QCAR/TrackableResult.h>
-#include <QCAR/MarkerResult.h>
-#include <QCAR/Tool.h>
-#include <QCAR/MarkerTracker.h>
-#include <QCAR/ImageTracker.h>
-#include <QCAR/TrackerManager.h>
-#include <QCAR/CameraCalibration.h>
-#include <QCAR/Marker.h>
-#include <QCAR/UpdateCallback.h>
-#include <QCAR/DataSet.h>
-#include <QCAR/TargetFinder.h>
-#include <QCAR/Tracker.h>
-#include <QCAR/ImageTarget.h>
-#include <QCAR/CylinderTarget.h>
-#include <QCAR/MultiTarget.h>
-
-#include "Utils.h"
+#include "RajawaliVuforia.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,7 +16,7 @@ QCAR::DataSet* dataSetToActivate = NULL;
 
 QCAR::Matrix44F projectionMatrix;
 
-//New global vars for Cloud Reco
+// New global vars for Cloud Reco
 bool scanningMode = false;
 static const size_t CONTENT_MAX = 256;
 char lastTargetId[CONTENT_MAX];
@@ -58,9 +27,47 @@ static const char* kSecretKey = NULL;
 
 jobject activityObj;
 
+bool shouldUpdateButton;
+std::map<std::string, QCAR::DataSet*> dataSetMap;
+std::vector<VirtualButton*> virtualButtons;
+
 class ImageTargets_UpdateCallback: public QCAR::UpdateCallback {
 	virtual void QCAR_onUpdate(QCAR::State&) {
+		if (shouldUpdateButton) {
+			assert(virtualButtons.size() > 0);
+			QCAR::ImageTracker* it = reinterpret_cast<QCAR::ImageTracker*>(
+					QCAR::TrackerManager::getInstance().getTracker(QCAR::ImageTracker::getClassType()));
 
+			for (int i = 0; i < virtualButtons.size(); i++) {
+				QCAR::DataSet* dataSet = dataSetMap[virtualButtons[i]->dataSetName];
+				assert(dataSet);
+
+				it->deactivateDataSet(dataSet);
+
+				assert(dataSet->getNumTrackables() > 0);
+				QCAR::Trackable* trackable = dataSet->getTrackable(virtualButtons[i]->id);
+
+				assert(trackable);
+				assert(trackable->isOfType(QCAR::ImageTarget::getClassType()));
+				QCAR::ImageTarget* target = static_cast<QCAR::ImageTarget*> (trackable);
+
+				char name[80];
+				strcpy(name, virtualButtons[i]->buttonName.c_str());
+				QCAR::VirtualButton* button = target->getVirtualButton(name);
+				if (button == NULL) {
+					QCAR::Rectangle vbRectangle(virtualButtons[i]->left, virtualButtons[i]->top,
+						virtualButtons[i]->right, virtualButtons[i]->bottom);
+					button = target->createVirtualButton(name, vbRectangle);
+					button->setEnabled(true);
+					LOG("============== create button %s", name);
+				}
+
+				it->activateDataSet(dataSet);
+			}
+
+			shouldUpdateButton = false;
+		}
+/*
 		if (dataSetToActivate != NULL) {
 			QCAR::TrackerManager& trackerManager =
 					QCAR::TrackerManager::getInstance();
@@ -73,7 +80,7 @@ class ImageTargets_UpdateCallback: public QCAR::UpdateCallback {
 			}
 			imageTracker->activateDataSet(dataSetToActivate);
 
-			if(isExtendedTrackingActivated)
+			if (isExtendedTrackingActivated)
 			{
 				for (int tIdx = 0; tIdx < dataSetToActivate->getNumTrackables(); tIdx++)
 				{
@@ -140,6 +147,7 @@ class ImageTargets_UpdateCallback: public QCAR::UpdateCallback {
 				}
 			}
 		}
+*/
 	}
 };
 
@@ -238,6 +246,7 @@ Java_rajawali_vuforia_RajawaliVuforiaActivity_createImageMarker(JNIEnv* env,
 		env->ReleaseStringUTFChars(dataSetFile, nativeString);
 		return 0;
 	}
+	dataSetMap.insert(std::pair<std::string, QCAR::DataSet*>(std::string(nativeString), dataSet));
 	env->ReleaseStringUTFChars(dataSetFile, nativeString);
 
 	// Activate the data set:
@@ -247,6 +256,34 @@ Java_rajawali_vuforia_RajawaliVuforiaActivity_createImageMarker(JNIEnv* env,
 	}
 
 	LOG("Successfully loaded and activated data set.");
+
+	return 1;
+}
+
+JNIEXPORT int JNICALL
+Java_rajawali_vuforia_RajawaliVuforiaActivity_setVirtualButtonOnDataSet(
+	JNIEnv* env, jobject object, jstring dataSetFile, jint idx, jstring targetName,
+	jstring buttonName, jfloat left, jfloat top, jfloat right, jfloat bottom) {
+
+	VirtualButton *button = new VirtualButton();
+	button->id = (int)idx;
+	button->top = (float)top;
+	button->bottom = (float)bottom;
+	button->left = (float)left;
+	button->right = (float)right;
+
+	const char *dataSetName = env->GetStringUTFChars(dataSetFile, NULL);
+	const char *target = env->GetStringUTFChars(targetName, NULL);
+	const char *name = env->GetStringUTFChars(buttonName, NULL);
+	button->dataSetName = std::string(dataSetName);
+	button->targetName = std::string(target);
+	button->buttonName = std::string(name);
+	env->ReleaseStringUTFChars(dataSetFile, dataSetName);
+	env->ReleaseStringUTFChars(targetName, target);
+	env->ReleaseStringUTFChars(buttonName, name);
+
+	virtualButtons.push_back(button);
+	shouldUpdateButton = true;
 
 	return 1;
 }
@@ -305,8 +342,36 @@ Java_rajawali_vuforia_RajawaliVuforiaRenderer_renderFrame(JNIEnv* env,
 					modelViewMatrix.data);
 			env->CallVoidMethod(object, foundFrameMarkerMethod,
 					(jint) trackable.getId(), modelViewMatrixOut);
+		} else if (trackable.isOfType(QCAR::ImageTarget::getClassType())) {
+			assert(trackableResult->isOfType(QCAR::ImageTargetResult::getClassType()));
+			const QCAR::ImageTargetResult* imageTargetResult = static_cast<const QCAR::ImageTargetResult*>(trackableResult);
+			jmethodID foundImageMarkerMethod = env->GetMethodID(ownerClass,
+					"foundImageMarker", "(Ljava/lang/String;[F)V");
+			env->SetFloatArrayRegion(modelViewMatrixOut, 0, 16,
+					modelViewMatrix.data);
+			const char* trackableName = trackable.getName();
+			jstring trackableNameJava = env->NewStringUTF(trackableName);
+			env->CallVoidMethod(object, foundImageMarkerMethod,
+					trackableNameJava, modelViewMatrixOut);
+
+			jmethodID onButtonPressedMethod = env->GetMethodID(ownerClass,
+					"onButtonPressed", "(Ljava/lang/String;Ljava/lang/String;)V");
+			for (int i = 0; i < virtualButtons.size(); i++) {
+				if (!virtualButtons[i]->targetName.compare(trackableName)) {
+					char name[80];
+					strcpy(name, virtualButtons[i]->buttonName.c_str());
+					const QCAR::VirtualButtonResult* button = imageTargetResult->getVirtualButtonResult(name);
+					if (button != NULL) {
+						if (button->isPressed()) {
+							jstring buttonNameJava = env->NewStringUTF(name);
+							env->CallVoidMethod(object, onButtonPressedMethod,
+									trackableNameJava, buttonNameJava);
+							LOG("============ button_%s is pressed.", name);
+						}
+					}
+				}
+			}
 		} else if (trackable.isOfType(QCAR::CylinderTarget::getClassType())
-				|| trackable.isOfType(QCAR::ImageTarget::getClassType())
 				|| trackable.isOfType(QCAR::MultiTarget::getClassType())) {
 			jmethodID foundImageMarkerMethod = env->GetMethodID(ownerClass,
 					"foundImageMarker", "(Ljava/lang/String;[F)V");
@@ -586,46 +651,46 @@ Java_rajawali_vuforia_RajawaliVuforiaActivity_destroyTrackerData(JNIEnv *env,
 JNIEXPORT jboolean JNICALL
 Java_rajawali_vuforia_RajawaliVuforiaActivity_startExtendedTracking(JNIEnv*, jobject)
 {
-    QCAR::TrackerManager& trackerManager = QCAR::TrackerManager::getInstance();
-    QCAR::ImageTracker* imageTracker = static_cast<QCAR::ImageTracker*>(
-          trackerManager.getTracker(QCAR::ImageTracker::getClassType()));
+	QCAR::TrackerManager& trackerManager = QCAR::TrackerManager::getInstance();
+	QCAR::ImageTracker* imageTracker = static_cast<QCAR::ImageTracker*>(
+		  trackerManager.getTracker(QCAR::ImageTracker::getClassType()));
 
-    QCAR::DataSet* currentDataSet = imageTracker->getActiveDataSet();
-    if (imageTracker == 0 || currentDataSet == 0)
-    	return JNI_FALSE;
+	QCAR::DataSet* currentDataSet = imageTracker->getActiveDataSet();
+	if (imageTracker == 0 || currentDataSet == 0)
+		return JNI_FALSE;
 
-    for (int tIdx = 0; tIdx < currentDataSet->getNumTrackables(); tIdx++)
-    {
-        QCAR::Trackable* trackable = currentDataSet->getTrackable(tIdx);
-        if(!trackable->startExtendedTracking())
-        	return JNI_FALSE;
-    }
+	for (int tIdx = 0; tIdx < currentDataSet->getNumTrackables(); tIdx++)
+	{
+		QCAR::Trackable* trackable = currentDataSet->getTrackable(tIdx);
+		if(!trackable->startExtendedTracking())
+			return JNI_FALSE;
+	}
 
-    isExtendedTrackingActivated = true;
-    return JNI_TRUE;
+	isExtendedTrackingActivated = true;
+	return JNI_TRUE;
 }
 
 
 JNIEXPORT jboolean JNICALL
 Java_rajawali_vuforia_RajawaliVuforiaActivity_stopExtendedTracking(JNIEnv*, jobject)
 {
-    QCAR::TrackerManager& trackerManager = QCAR::TrackerManager::getInstance();
-    QCAR::ImageTracker* imageTracker = static_cast<QCAR::ImageTracker*>(
-          trackerManager.getTracker(QCAR::ImageTracker::getClassType()));
+	QCAR::TrackerManager& trackerManager = QCAR::TrackerManager::getInstance();
+	QCAR::ImageTracker* imageTracker = static_cast<QCAR::ImageTracker*>(
+		  trackerManager.getTracker(QCAR::ImageTracker::getClassType()));
 
-    QCAR::DataSet* currentDataSet = imageTracker->getActiveDataSet();
-    if (imageTracker == 0 || currentDataSet == 0)
-    	return JNI_FALSE;
+	QCAR::DataSet* currentDataSet = imageTracker->getActiveDataSet();
+	if (imageTracker == 0 || currentDataSet == 0)
+		return JNI_FALSE;
 
-    for (int tIdx = 0; tIdx < currentDataSet->getNumTrackables(); tIdx++)
-    {
-    	QCAR::Trackable* trackable = currentDataSet->getTrackable(tIdx);
-        if(!trackable->stopExtendedTracking())
-        	return JNI_FALSE;
-    }
+	for (int tIdx = 0; tIdx < currentDataSet->getNumTrackables(); tIdx++)
+	{
+		QCAR::Trackable* trackable = currentDataSet->getTrackable(tIdx);
+		if(!trackable->stopExtendedTracking())
+			return JNI_FALSE;
+	}
 
-    isExtendedTrackingActivated = false;
-    return JNI_TRUE;
+	isExtendedTrackingActivated = false;
+	return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL

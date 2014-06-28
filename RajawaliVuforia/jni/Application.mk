@@ -7,7 +7,7 @@
 
 # Build both ARMv5TE and ARMv7-A machine code.
 
-APP_ABI := armeabi-v7a  
+APP_ABI := armeabi-v7a
 
 # Set target Android API level to the application's minimum SDK version.
 
@@ -25,6 +25,7 @@ APP_PLATFORM := android-8
 # binaries, but the 'release' builds tend to provide less information
 # during debugging sessions: some variables are optimized out and
 # can't be inspected, code re-ordering can make stepping through
-# the code difficult, stack traces may not be reliable, etc... 
+# the code difficult, stack traces may not be reliable, etc...
 
 # APP_OPTIM := release OR debug
+APP_STL := stlport_static

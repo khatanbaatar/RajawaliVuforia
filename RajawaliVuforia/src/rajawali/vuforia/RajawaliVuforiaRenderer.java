@@ -115,8 +115,9 @@ public abstract class RajawaliVuforiaRenderer extends RajawaliRenderer {
 		}
 	}
 	
-	abstract protected void foundFrameMarker(int markerId, Vector3 position, Quaternion orientation);
 	abstract protected void foundImageMarker(String trackableName, Vector3 position, Quaternion orientation);
+	abstract protected void onButtonPressed(String trackableName, String buttonName);
+	abstract protected void foundFrameMarker(int markerId, Vector3 position, Quaternion orientation);
 	abstract public void noFrameMarkersFound();
 
 	public void onDrawFrame(GL10 glUnused) {
